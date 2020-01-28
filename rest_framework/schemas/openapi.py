@@ -537,3 +537,50 @@ class AutoSchema(ViewInspector):
                 'description': ""
             }
         }
+
+
+class APIViewSchema(AutoSchema):
+    def _get_serializer(self, path, method):
+        method_func = getattr(self.view, method.lower())
+        if hasattr(method_func, '_schema_serializer'):
+            return method_func._schema_serializer
+        return super()._get_serializer(path, method)
+
+    def _get_filter_parameters(self, path, method):
+        parameters = super()._get_filter_parameters(path, method)
+        method_func = getattr(self.view, method.lower())
+        if hasattr(method_func, '_schema_query_parameters'):
+            parameters += self._map_parameters_serializer(method_func._schema_query_parameters, 'query')
+        return parameters
+
+    def _map_parameters_serializer(self, serializer, location):
+        map_ = self._map_serializer(serializer)
+        parameters = []
+        for name in map_['properties']:
+            parameter = {
+                'name': name,
+                'in': location,
+            }
+            if 'required' in map_ and name in map_['required']:
+                parameter['required'] = True
+            if 'description' in map_['properties'][name]:
+                parameter['description'] = map_['properties'][name]['description']
+            parameter['schema'] = {k: v for k, v in map_['properties'][name].items() if k != 'description'}
+            parameters.append(parameter)
+        return parameters
+
+    @staticmethod
+    def serializer(serializer: serializers.Serializer):
+        def aux(func):
+            func._schema_serializer = serializer
+            return func
+
+        return aux
+
+    @staticmethod
+    def query_parameters(parameters: serializers.Serializer):
+        def aux(func):
+            func._schema_query_parameters = parameters
+            return func
+
+        return aux
